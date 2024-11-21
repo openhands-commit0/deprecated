@@ -117,7 +117,23 @@ class ClassicAdapter(wrapt.AdapterFactory):
 
         :return: The warning message.
         """
-        pass
+        if instance is None:
+            if inspect.isclass(wrapped):
+                fmt = "Call to deprecated class {name}."
+            else:
+                fmt = "Call to deprecated function (or staticmethod) {name}."
+        else:
+            if inspect.isclass(instance):
+                fmt = "Call to deprecated class method {name}."
+            else:
+                fmt = "Call to deprecated method {name}."
+        if self.reason:
+            fmt += " ({reason})"
+        if self.version:
+            fmt += " -- Deprecated since version {version}."
+        return fmt.format(name=wrapped.__name__,
+                         reason=self.reason or "",
+                         version=self.version or "")
 
     def __call__(self, wrapped):
         """
@@ -148,7 +164,19 @@ class ClassicAdapter(wrapt.AdapterFactory):
                     return old_new1(cls)
                 return old_new1(cls, *args, **kwargs)
             wrapped.__new__ = staticmethod(wrapped_cls)
-        return wrapped
+            return wrapped
+        else:
+            @functools.wraps(wrapped)
+            def wrapper(*args, **kwargs):
+                msg = self.get_deprecated_msg(wrapped, args[0] if args else None)
+                if self.action:
+                    with warnings.catch_warnings():
+                        warnings.simplefilter(self.action, self.category)
+                        warnings.warn(msg, category=self.category, stacklevel=_routine_stacklevel)
+                else:
+                    warnings.warn(msg, category=self.category, stacklevel=_routine_stacklevel)
+                return wrapped(*args, **kwargs)
+            return wrapper
 
 def deprecated(*args, **kwargs):
     """
@@ -226,4 +254,42 @@ def deprecated(*args, **kwargs):
            return x + y
 
     """
-    pass
+    if not args and not kwargs:
+        kwargs['reason'] = ''
+        kwargs['version'] = ''
+        kwargs['action'] = ''
+        kwargs['category'] = DeprecationWarning
+        adapter_cls = ClassicAdapter
+        adapter = adapter_cls(**kwargs)
+        return adapter
+
+    if args and isinstance(args[0], (type, type(range), type(abs))):
+        if not isinstance(args[0], type) and not callable(args[0]):
+            raise TypeError(repr(type(args[0])))
+        kwargs['reason'] = kwargs.get('reason', '')
+        kwargs['version'] = kwargs.get('version', '')
+        kwargs['action'] = kwargs.get('action', '')
+        kwargs['category'] = kwargs.get('category', DeprecationWarning)
+        adapter_cls = kwargs.pop('adapter_cls', ClassicAdapter)
+        adapter = adapter_cls(**kwargs)
+        return adapter(args[0])
+    else:
+        def decorator(wrapped):
+            if len(args) == 1 and isinstance(args[0], str):
+                kwargs['reason'] = args[0]
+            else:
+                kwargs['reason'] = kwargs.get('reason', '')
+            kwargs['version'] = kwargs.get('version', '')
+            kwargs['action'] = kwargs.get('action', '')
+            kwargs['category'] = kwargs.get('category', DeprecationWarning)
+            adapter_cls = kwargs.pop('adapter_cls', ClassicAdapter)
+            adapter = adapter_cls(**kwargs)
+            return adapter(wrapped)
+        if len(args) == 1:
+            if callable(args[0]):
+                return decorator(args[0])
+            elif isinstance(args[0], str):
+                return decorator
+            else:
+                raise TypeError(repr(type(args[0])))
+        return decorator

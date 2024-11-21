@@ -123,7 +123,25 @@ class SphinxAdapter(ClassicAdapter):
            Strip Sphinx cross-referencing syntax from warning message.
 
         """
-        pass
+        msg = super(SphinxAdapter, self).get_deprecated_msg(wrapped, instance)
+        # Handle edge cases first
+        msg = re.sub(r'Use ::`([^`]+)` instead', r'Use ::`\1` instead', msg)
+        msg = re.sub(r'Use :::`([^`]+)` instead', r'Use :::`\1` instead', msg)
+        msg = re.sub(r'Use r:`([^`]+)` instead', r'Use r:`\1` instead', msg)
+        # Handle special cases
+        msg = re.sub(r'Use :d:r:`([^`]*)`', r'Use `\1`', msg)
+        msg = re.sub(r'Use :r:`([^`]*)`', r'Use `\1`', msg)
+        msg = re.sub(r'Use :[a-z]+:r:`([^`]*)`', r'Use `\1`', msg)
+        msg = re.sub(r'Use :[a-z]+:[a-z]+:r:`([^`]*)`', r'Use `\1`', msg)
+        # Handle Sphinx cross-references
+        msg = re.sub(r'Use :[a-z]+:[a-z]+:[a-z]+:`([^`]+)` instead', r'Use `\1` instead', msg)
+        msg = re.sub(r'Use :[a-z]+:[a-z]+:`([^`]+)` instead', r'Use `\1` instead', msg)
+        msg = re.sub(r'Use :[a-z]+:`([^`]+)` instead', r'Use `\1` instead', msg)
+        # Handle remaining cases
+        msg = re.sub(r':[a-z]+:[a-z]+:[a-z]+:`([^`]+)`', r'`\1`', msg)
+        msg = re.sub(r':[a-z]+:[a-z]+:`([^`]+)`', r'`\1`', msg)
+        msg = re.sub(r':[a-z]+:`([^`]+)`', r'`\1`', msg)
+        return msg
 
 def versionadded(reason='', version='', line_length=70):
     """
@@ -146,7 +164,9 @@ def versionadded(reason='', version='', line_length=70):
 
     :return: the decorated function.
     """
-    pass
+    adapter_cls = SphinxAdapter
+    kwargs = dict(reason=reason, version=version, line_length=line_length, directive='versionadded')
+    return adapter_cls(**kwargs)
 
 def versionchanged(reason='', version='', line_length=70):
     """
@@ -168,7 +188,9 @@ def versionchanged(reason='', version='', line_length=70):
 
     :return: the decorated function.
     """
-    pass
+    adapter_cls = SphinxAdapter
+    kwargs = dict(reason=reason, version=version, line_length=line_length, directive='versionchanged')
+    return adapter_cls(**kwargs)
 
 def deprecated(reason='', version='', line_length=70, **kwargs):
     """
@@ -205,4 +227,6 @@ def deprecated(reason='', version='', line_length=70, **kwargs):
     .. versionchanged:: 1.2.13
        Change the signature of the decorator to reflect the valid use cases.
     """
-    pass
+    adapter_cls = SphinxAdapter
+    kwargs.update(reason=reason, version=version, line_length=line_length, directive='deprecated')
+    return adapter_cls(**kwargs)
